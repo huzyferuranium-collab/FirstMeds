@@ -1,0 +1,27 @@
+# Render Blueprint: one-click deploy of FirstMeds (API + website + app on one URL).
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: firstmeds
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: admin@firstmeds.ug
+      - key: ADMIN_PASSWORD
+        sync: false          # you type this in during setup (10+ characters)
+      # Demo mode: loads 10 demo facilities + 90 days of sales on first start and shows
+      # demo-login buttons. Set both to 0 when you go live with real pharmacies.
+      - key: SEED_DEMO
+        value: "1"
+      - key: VITE_SHOW_DEMO_LOGINS
+        value: "1"

@@ -88,6 +88,16 @@ client/            React 18 + Vite
 
 ## Deploying
 
+### One-click: Render (free)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/huzyferuranium-collab/UraniumFx)
+
+`render.yaml` sets up one web service that serves the website, the app and the API on a single `https://<name>.onrender.com` URL. During setup you choose the HQ admin password. Demo mode is on (demo facilities and sales are loaded, and the demo-login buttons are shown). Set `SEED_DEMO=0` and `VITE_SHOW_DEMO_LOGINS=0` when you go live.
+
+Render's free plan has no persistent disk. The database resets whenever the service restarts or redeploys, and an idle free service goes to sleep after about 15 minutes. That is fine for a demo. For real pharmacies, use a paid instance with a persistent disk mounted at `/data`, and set `DATABASE_PATH=/data/firstmeds.db`.
+
+### Docker
+
 The easiest route is the Docker image, which builds the client and serves everything from one Node process:
 
 ```bash
