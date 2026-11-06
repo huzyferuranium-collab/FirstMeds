@@ -207,6 +207,13 @@ test('website join application can be approved into a pharmacy + owner', async (
   assert.equal(l.status, 200);
   assert.equal(l.data.user.role, 'owner');
   assert.equal(l.data.user.must_change_password, true);
+  // Temporary password must be changed before the app can be used.
+  const t = l.data.token;
+  assert.equal((await call('GET', '/api/inventory', { token: t })).status, 403);
+  assert.equal((await call('GET', '/api/auth/me', { token: t })).status, 200);
+  const ch = await call('POST', '/api/auth/change-password', { token: t, body: { current_password: ap.data.temporary_password, new_password: 'a-new-password-1' } });
+  assert.equal(ch.status, 200);
+  assert.equal((await call('GET', '/api/inventory', { token: t })).status, 200);
 });
 
 test('owners can add cashiers but not owners/admins', async () => {

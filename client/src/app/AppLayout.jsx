@@ -34,6 +34,7 @@ export default function AppLayout() {
 
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/app/login" replace state={{ from: pathname }} />;
+  if (user.must_change_password && pathname !== '/app/settings') return <Navigate to="/app/settings" replace />;
 
   const facility = !!activePharmacy;
   return (

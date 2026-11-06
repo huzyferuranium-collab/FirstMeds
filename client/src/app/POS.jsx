@@ -96,11 +96,17 @@ export default function POS() {
   };
 
   useEffect(() => {
-    if (!cart.length) { setQuote(null); setQuoteErr(null); return; }
+    // Drop the old quote immediately; only the response for the current basket may set a new one.
+    setQuote(null);
+    setQuoteErr(null);
+    if (!cart.length) return;
+    let current = true;
     const t = setTimeout(() => {
-      api.post('/sales/quote', body).then((r) => { setQuote(r); setQuoteErr(null); }).catch((e) => { setQuote(null); setQuoteErr(e); });
+      api.post('/sales/quote', body)
+        .then((r) => { if (current) setQuote(r); })
+        .catch((e) => { if (current) setQuoteErr(e); });
     }, 120);
-    return () => clearTimeout(t);
+    return () => { current = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(body)]);
 
@@ -237,8 +243,8 @@ export default function POS() {
                 </div>
               )}
               <ErrorBox error={error} />
-              <button className="btn lg block" style={{ marginTop: 14 }} disabled={busy || !!quoteErr || (isMomo && total > 0 && !ref) || (change != null && change < 0)} onClick={checkout}>
-                {busy ? 'Saving…' : total === 0 ? 'Complete (fully subsidised)' : `Charge ${ugx(total)}`}
+              <button className="btn lg block" style={{ marginTop: 14 }} disabled={busy || !quote || !!quoteErr || (isMomo && total > 0 && !ref) || (change != null && change < 0)} onClick={checkout}>
+                {busy ? 'Saving…' : !quote && !quoteErr ? 'Checking prices…' : total === 0 ? 'Complete (fully subsidised)' : `Charge ${ugx(total)}`}
               </button>
             </>
           )}

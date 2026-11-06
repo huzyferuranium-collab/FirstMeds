@@ -43,6 +43,11 @@ export function requireAuth(db) {
     if (user.role !== 'admin' && user.pharmacy_status === 'suspended') {
       return next(new HttpError(403, 'This pharmacy is suspended from the FirstMeds network. Contact support.'));
     }
+    // Temporary passwords must be changed before anything else is allowed.
+    const path = (req.originalUrl || '').split('?')[0];
+    if (user.must_change_password && !['/api/auth/me', '/api/auth/change-password'].includes(path)) {
+      return next(new HttpError(403, 'Please change your temporary password first.'));
+    }
     req.user = user;
     next();
   };

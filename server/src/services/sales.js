@@ -112,7 +112,9 @@ export function createSale(db, { pharmacyId, user, body, createdAt = null }) {
     const tendered = body.amount_tendered != null && body.amount_tendered !== '' ? Number(body.amount_tendered) : null;
     if (method === 'cash' && tendered != null && tendered < q.total) throw bad('Cash tendered is less than the amount due');
 
-    const asOf = (createdAt || new Date().toISOString()).slice(0, 10);
+    // Expiry is judged on the Uganda (EAT) calendar date, matching the stock summary.
+    const eatDay = createdAt ? new Date(Date.parse(`${createdAt.replace(' ', 'T')}Z`) + 3 * 3600e3).toISOString().slice(0, 10) : today();
+    const asOf = eatDay;
     const allocations = [];
     for (const line of q.lines) {
       const batches = db.all(
@@ -136,7 +138,6 @@ export function createSale(db, { pharmacyId, user, body, createdAt = null }) {
       allocations.push({ line, parts });
     }
 
-    const eatDay = createdAt ? new Date(Date.parse(`${createdAt.replace(' ', 'T')}Z`) + 3 * 3600e3).toISOString().slice(0, 10) : today();
     const receipt_no = nextReceiptNo(db, pharmacyId, eatDay);
     const sale = db.run(
       `INSERT INTO sales (pharmacy_id, user_id, patient_id, program_id, receipt_no, subtotal, discount_total, subsidy_total, total,
