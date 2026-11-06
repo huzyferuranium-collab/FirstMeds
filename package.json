@@ -1,0 +1,18 @@
+{
+  "name": "firstmeds",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FirstMeds — digital pharmacy network for Uganda: point of sale, patient programs and health data.",
+  "workspaces": ["server", "client"],
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,blue \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "seed": "npm run seed -w server",
+    "test": "npm test -w server"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.6"
+  },
+  "license": "MIT"
+}

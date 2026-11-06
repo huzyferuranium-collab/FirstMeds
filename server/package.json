@@ -1,0 +1,21 @@
+{
+  "name": "@firstmeds/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/index.js",
+    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "seed": "node --disable-warning=ExperimentalWarning src/seed.js --reset",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  },
+  "engines": { "node": ">=22.5" },
+  "dependencies": {
+    "bcryptjs": "3.0.3",
+    "express": "5.1.0",
+    "express-rate-limit": "7.5.1",
+    "helmet": "8.1.0",
+    "jsonwebtoken": "9.0.2"
+  }
+}
