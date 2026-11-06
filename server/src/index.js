@@ -2,6 +2,11 @@ import { openDb, DEFAULT_DB_PATH } from './db.js';
 import { createApp } from './app.js';
 import { seed } from './seed.js';
 
+if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)) {
+  console.error('Set JWT_SECRET to a random string of at least 32 characters.');
+  process.exit(1);
+}
+
 const db = openDb();
 if (!db.get('SELECT 1 FROM users LIMIT 1')) {
   if (process.env.NODE_ENV === 'production') {
