@@ -9,9 +9,9 @@ export default function productRoutes(db) {
     const q = `%${(req.query.q || '').trim()}%`;
     const rows = db.all(
       `SELECT * FROM products
-        WHERE (name LIKE ? OR generic_name LIKE ? OR category LIKE ?) ${req.query.all ? '' : 'AND active = 1'}
+        WHERE (name LIKE ? OR generic_name LIKE ? OR category LIKE ? OR barcode = ?) ${req.query.all ? '' : 'AND active = 1'}
         ORDER BY name LIMIT 500`,
-      q, q, q,
+      q, q, q, (req.query.q || '').trim(),
     );
     res.json(rows);
   });
@@ -25,12 +25,16 @@ export default function productRoutes(db) {
     str(b, 'form', { required: false, max: 60 }), str(b, 'category', { required: false, max: 60 }) || 'General',
     str(b, 'unit', { required: false, max: 30 }) || 'unit', str(b, 'nda_reg_no', { required: false, max: 60 }),
     int(b, 'default_price', { min: 0 }), bool(b.is_essential), bool(b.requires_prescription),
+    str(b, 'barcode', { required: false, max: 32 }),
+    ['registered', 'unverified', 'suspended'].includes(b.nda_status) ? b.nda_status : 'registered',
+    str(b, 'counselling', { required: false, max: 500 }), bool(b.antibiotic),
   ];
 
   r.post('/', allow('admin'), (req, res) => {
     const { id } = db.run(
-      `INSERT INTO products (name, generic_name, strength, form, category, unit, nda_reg_no, default_price, is_essential, requires_prescription)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO products (name, generic_name, strength, form, category, unit, nda_reg_no, default_price, is_essential, requires_prescription,
+                             barcode, nda_status, counselling, antibiotic)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ...fields(req.body),
     );
     res.status(201).json(db.get('SELECT * FROM products WHERE id = ?', id));
@@ -41,7 +45,7 @@ export default function productRoutes(db) {
     if (!db.get('SELECT 1 FROM products WHERE id = ?', id)) throw notFound('Product');
     db.run(
       `UPDATE products SET name=?, generic_name=?, strength=?, form=?, category=?, unit=?, nda_reg_no=?, default_price=?,
-              is_essential=?, requires_prescription=?, active=? WHERE id = ?`,
+              is_essential=?, requires_prescription=?, barcode=?, nda_status=?, counselling=?, antibiotic=?, active=? WHERE id = ?`,
       ...fields(req.body), req.body.active === undefined ? 1 : bool(req.body.active), id,
     );
     res.json(db.get('SELECT * FROM products WHERE id = ?', id));

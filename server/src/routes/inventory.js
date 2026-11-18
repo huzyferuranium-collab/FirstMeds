@@ -10,18 +10,21 @@ export function stockSummary(db, pharmacyId, { q = '', onlyStocked = false } = {
     `SELECT p.id AS product_id, p.name, p.generic_name, p.strength, p.form, p.category, p.unit,
             p.requires_prescription, p.is_essential,
             COALESCE(pp.price, p.default_price) AS price, COALESCE(pp.reorder_level, 10) AS reorder_level,
-            COALESCE(SUM(CASE WHEN b.expiry_date >= ? THEN b.quantity END), 0) AS in_stock,
-            COALESCE(SUM(CASE WHEN b.expiry_date < ? THEN b.quantity END), 0) AS expired_qty,
-            MIN(CASE WHEN b.quantity > 0 AND b.expiry_date >= ? THEN b.expiry_date END) AS next_expiry,
-            COALESCE(SUM(CASE WHEN b.expiry_date >= ? THEN b.quantity * b.cost_price END), 0) AS stock_value
+            p.barcode, p.nda_status, p.counselling, p.antibiotic,
+            COALESCE(SUM(CASE WHEN b.expiry_date >= ? AND b.quarantined = 0 THEN b.quantity END), 0) AS in_stock,
+            COALESCE(SUM(CASE WHEN b.expiry_date < ? AND b.quarantined = 0 THEN b.quantity END), 0) AS expired_qty,
+            COALESCE(SUM(CASE WHEN b.quarantined = 1 THEN b.quantity END), 0) AS quarantined_qty,
+            MIN(CASE WHEN b.quantity > 0 AND b.expiry_date >= ? AND b.quarantined = 0 THEN b.expiry_date END) AS next_expiry,
+            COALESCE(SUM(CASE WHEN b.expiry_date >= ? AND b.quarantined = 0 THEN b.quantity * b.cost_price END), 0) AS stock_value
        FROM products p
        LEFT JOIN pharmacy_products pp ON pp.product_id = p.id AND pp.pharmacy_id = ?
        LEFT JOIN inventory_batches b ON b.product_id = p.id AND b.pharmacy_id = ?
-      WHERE p.active = 1 AND (p.name LIKE ? OR p.generic_name LIKE ? OR p.category LIKE ?)
+      WHERE p.active = 1 AND (p.name LIKE ? OR p.generic_name LIKE ? OR p.category LIKE ? OR p.barcode = ?)
+        AND (? != 'drug_shop' OR p.requires_prescription = 0)
       GROUP BY p.id
       ${onlyStocked ? 'HAVING in_stock > 0' : ''}
       ORDER BY p.name`,
-    t, t, t, t, pharmacyId, pharmacyId, like, like, like,
+    t, t, t, t, pharmacyId, pharmacyId, like, like, like, q, phType(db, pharmacyId),
   );
 }
 
@@ -43,12 +46,17 @@ export default function inventoryRoutes(db) {
       out_of_stock: summary.filter((s) => s.in_stock === 0 && hasHistory(db, ph, s.product_id)),
       expiring: db.all(
         `SELECT b.*, p.name, p.strength FROM inventory_batches b JOIN products p ON p.id = b.product_id
-          WHERE b.pharmacy_id = ? AND b.quantity > 0 AND b.expiry_date >= ? AND b.expiry_date <= ? ORDER BY b.expiry_date`,
+          WHERE b.pharmacy_id = ? AND b.quantity > 0 AND b.quarantined = 0 AND b.expiry_date >= ? AND b.expiry_date <= ? ORDER BY b.expiry_date`,
         ph, t, addDays(t, 90),
+      ),
+      quarantined: db.all(
+        `SELECT b.*, p.name, p.strength FROM inventory_batches b JOIN products p ON p.id = b.product_id
+          WHERE b.pharmacy_id = ? AND b.quantity > 0 AND b.quarantined = 1 ORDER BY b.id DESC`,
+        ph,
       ),
       expired: db.all(
         `SELECT b.*, p.name, p.strength FROM inventory_batches b JOIN products p ON p.id = b.product_id
-          WHERE b.pharmacy_id = ? AND b.quantity > 0 AND b.expiry_date < ? ORDER BY b.expiry_date`,
+          WHERE b.pharmacy_id = ? AND b.quantity > 0 AND b.quarantined = 0 AND b.expiry_date < ? ORDER BY b.expiry_date`,
         ph, t,
       ),
     });
@@ -82,7 +90,10 @@ export default function inventoryRoutes(db) {
     const t = today();
     const created = db.tx(() => items.map((it) => {
       const productId = int(it, 'product_id', { min: 1 });
-      if (!db.get('SELECT 1 FROM products WHERE id = ?', productId)) throw notFound(`Product ${productId}`);
+      const prod = db.get('SELECT name, requires_prescription, nda_status FROM products WHERE id = ?', productId);
+      if (!prod) throw notFound(`Product ${productId}`);
+      if (prod.requires_prescription && phType(db, ph) === 'drug_shop') throw bad(`${prod.name} is prescription-only; drug shops may not stock it`);
+      if (prod.nda_status === 'suspended') throw bad(`${prod.name} is suspended after a quality alert and cannot be received`);
       const qty = int(it, 'quantity', { min: 1, max: 1_000_000 });
       const expiry = str(it, 'expiry_date', { max: 10 });
       if (!isDate(expiry)) throw bad('expiry_date must be YYYY-MM-DD');
@@ -93,6 +104,9 @@ export default function inventoryRoutes(db) {
         'INSERT INTO inventory_batches (pharmacy_id, product_id, batch_no, expiry_date, quantity, cost_price, supplier) VALUES (?,?,?,?,?,?,?)',
         ph, productId, batchNo, expiry, qty, cost, it.supplier || supplier,
       );
+      if (it.po_id) db.run('UPDATE inventory_batches SET po_id = ? WHERE id = ?', Number(it.po_id), id);
+      // Batch already flagged as fake elsewhere in the network? Quarantine it on arrival.
+      if (flaggedBatch(db, productId, batchNo)) db.run('UPDATE inventory_batches SET quarantined = 1 WHERE id = ?', id);
       db.run(
         "INSERT INTO stock_movements (pharmacy_id, product_id, batch_id, type, quantity, reason, user_id) VALUES (?,?,?,'receive',?,?,?)",
         ph, productId, id, qty, supplier ? `From ${supplier}` : 'Stock received', req.user.id,
@@ -146,6 +160,18 @@ export default function inventoryRoutes(db) {
   });
 
   return r;
+}
+
+export function flaggedBatch(db, productId, batchNo) {
+  return db.get(
+    `SELECT id, status FROM quality_reports WHERE product_id = ? AND batch_no = ? COLLATE NOCASE
+        AND status IN ('open','investigating','reported_to_nda','confirmed') LIMIT 1`,
+    productId, batchNo,
+  );
+}
+
+function phType(db, ph) {
+  return db.get('SELECT type FROM pharmacies WHERE id = ?', ph)?.type || 'pharmacy';
 }
 
 function hasHistory(db, ph, productId) {

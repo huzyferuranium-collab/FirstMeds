@@ -146,7 +146,8 @@ test('program subsidy needs enrollment and feeds claims', async () => {
   assert.equal(pt.status, 201);
   assert.equal(pt.data.phone, '+256772999888');
 
-  const body = { patient_id: pt.data.id, program_id: heart.id, items: [{ product_id: amlo, quantity: 3, days_supply: 30 }] };
+  const body = { patient_id: pt.data.id, program_id: heart.id, items: [{ product_id: amlo, quantity: 3, days_supply: 30 }],
+    prescription: { prescriber_name: 'Dr Test', rx_date: today() } };
   assert.equal((await call('POST', '/api/sales/quote', { token: tokens.cashier1, body })).status, 400);
 
   assert.equal((await call('POST', `/api/patients/${pt.data.id}/enroll`, { token: tokens.cashier1, body: { program_id: heart.id } })).status, 201);
