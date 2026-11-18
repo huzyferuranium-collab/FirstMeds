@@ -12,7 +12,12 @@ import Sales, { SaleDetail } from './app/Sales.jsx';
 import Inventory, { ReceiveStock } from './app/Inventory.jsx';
 import Patients, { PatientDetail } from './app/Patients.jsx';
 import { Reminders, Programmes, Claims, Reports, Team, Settings } from './app/Ops.jsx';
-import { Network, Pharmacies, Applications, Catalogue, Website } from './app/admin/HQ.jsx';
+import { Network, Pharmacies, Applications, Catalogue, Website, Suppliers } from './app/admin/HQ.jsx';
+import HealthCheck from './app/Health.jsx';
+import Quality, { Prescriptions } from './app/Quality.jsx';
+import Purchasing from './app/Purchasing.jsx';
+import Cash from './app/Cash.jsx';
+import Why from './site/Why.jsx';
 
 function Roles({ roles, children }) {
   const { can } = useAuth();
@@ -31,6 +36,7 @@ export default function App() {
         <Route path="programmes" element={<SiteProgrammes />} />
         <Route path="data" element={<DataInsights />} />
         <Route path="about" element={<About />} />
+        <Route path="why-firstmeds" element={<Why />} />
         <Route path="news" element={<News />} />
         <Route path="news/:slug" element={<NewsPost />} />
         <Route path="careers" element={<Careers />} />
@@ -50,6 +56,12 @@ export default function App() {
         <Route path="inventory" element={facility(<Inventory />)} />
         <Route path="receive" element={facility(<Roles roles={['admin', 'owner', 'pharmacist']}><ReceiveStock /></Roles>)} />
         <Route path="programmes" element={<Programmes />} />
+        <Route path="health" element={facility(<HealthCheck />)} />
+        <Route path="quality" element={<Quality />} />
+        <Route path="prescriptions" element={facility(<Roles roles={['admin', 'owner', 'pharmacist']}><Prescriptions /></Roles>)} />
+        <Route path="purchasing" element={facility(<Roles roles={['admin', 'owner', 'pharmacist']}><Purchasing /></Roles>)} />
+        <Route path="cash" element={facility(<Cash />)} />
+        <Route path="hq/suppliers" element={hq(<Suppliers />)} />
         <Route path="claims" element={<Roles roles={['admin', 'owner']}><Claims /></Roles>} />
         <Route path="reports" element={<Roles roles={['admin', 'owner']}><Reports /></Roles>} />
         <Route path="team" element={facility(<Roles roles={['admin', 'owner']}><Team /></Roles>)} />

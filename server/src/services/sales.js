@@ -1,3 +1,4 @@
+import { fiscalise } from './efris.js';
 import { bad, conflict, notFound, forbidden, today, EAT, PAYMENT_METHODS } from '../util.js';
 
 /** Effective selling price of a product at a pharmacy. */
@@ -47,11 +48,26 @@ export function quoteSale(db, pharmacyId, body) {
     merged.set(productId, { product_id: productId, quantity: (prev?.quantity || 0) + qty, days_supply: Math.max(prev?.days_supply || 0, days) });
   }
 
+  const pharmacy = db.get('SELECT id, type, efris_enabled FROM pharmacies WHERE id = ?', pharmacyId);
+  if (!pharmacy) throw notFound('Pharmacy');
   const lines = [...merged.values()].map((it) => {
     const p = priceFor(db, pharmacyId, it.product_id);
     if (!p.active) throw bad(`${p.name} is no longer sold`);
-    return { ...it, name: p.name, unit_price: p.unit_price, line_total: p.unit_price * it.quantity };
+    const meta = db.get('SELECT category, requires_prescription, antibiotic, nda_status, counselling FROM products WHERE id = ?', it.product_id);
+    if (meta.nda_status === 'suspended') throw bad(`${p.name} has been suspended (quality alert). Do not sell it.`);
+    if (pharmacy.type === 'drug_shop' && meta.requires_prescription) {
+      throw forbidden(`${p.name} is prescription-only. Drug shops are not licensed to sell it.`);
+    }
+    return {
+      ...it, name: p.name, unit_price: p.unit_price, line_total: p.unit_price * it.quantity,
+      category: meta.category, requires_prescription: !!meta.requires_prescription, antibiotic: !!meta.antibiotic,
+      counselling: meta.counselling || null,
+    };
   });
+  const needs_prescription = lines.some((l) => l.requires_prescription);
+  const hasAntimalarial = lines.some((l) => l.category === 'Antimalarial');
+  const hasMalariaTest = lines.some((l) => /malaria rapid/i.test(l.name));
+  const needs_malaria_test = hasAntimalarial && !hasMalariaTest;
 
   let program = null;
   let eligible = new Set();
@@ -83,7 +99,43 @@ export function quoteSale(db, pharmacyId, body) {
   const subsidy_total = subsidies.reduce((a, b) => a + b, 0);
   const discount_total = Math.min(Math.max(0, Math.round(Number(body.discount || 0))), subtotal - subsidy_total);
   const total = subtotal - subsidy_total - discount_total;
-  return { lines, program, patient_id: patientId, subtotal, subsidy_total, discount_total, total };
+  return {
+    lines, program, patient_id: patientId, subtotal, subsidy_total, discount_total, total, pharmacy,
+    needs_prescription, needs_malaria_test, malaria_tested_here: hasAntimalarial && hasMalariaTest,
+    counselling: lines.filter((l) => l.counselling).map((l) => ({ product_id: l.product_id, name: l.name, text: l.counselling })),
+  };
+}
+
+const MALARIA_TEST = ['tested_here', 'tested_elsewhere', 'not_tested'];
+
+/** Validate prescription details for prescription-only medicines. Returns cleaned record or throws. */
+function checkPrescription(rx, asOf) {
+  if (!rx || !rx.prescriber_name || !rx.rx_date) {
+    throw bad('Prescription-only medicine: enter the prescriber name and prescription date', { code: 'PRESCRIPTION_REQUIRED' });
+  }
+  const d = String(rx.rx_date);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw bad('Prescription date must be YYYY-MM-DD');
+  if (d > asOf) throw bad('Prescription date cannot be in the future');
+  const age = (Date.parse(asOf) - Date.parse(d)) / 864e5;
+  if (age > 30) throw bad('Prescription is older than 30 days. Ask the patient for a new one.');
+  return {
+    prescriber_name: String(rx.prescriber_name).trim().slice(0, 120),
+    prescriber_reg_no: rx.prescriber_reg_no ? String(rx.prescriber_reg_no).trim().slice(0, 40) : null,
+    prescriber_facility: rx.prescriber_facility ? String(rx.prescriber_facility).trim().slice(0, 120) : null,
+    diagnosis: rx.diagnosis ? String(rx.diagnosis).trim().slice(0, 200) : null,
+    patient_name: rx.patient_name ? String(rx.patient_name).trim().slice(0, 120) : null,
+    rx_date: d,
+  };
+}
+
+/** Offline sales carry their original time; accept it only if it is recent and not in the future. */
+function offlineTime(body) {
+  if (!body.offline_created_at) return null;
+  const t = Date.parse(body.offline_created_at);
+  if (Number.isNaN(t)) throw bad('offline_created_at is not a valid time');
+  if (t > Date.now() + 5 * 60e3) throw bad('offline_created_at is in the future');
+  if (t < Date.now() - 14 * 864e5) throw bad('Offline sale is older than 14 days and cannot be synced');
+  return new Date(t).toISOString().replace('T', ' ').slice(0, 19);
 }
 
 function nextReceiptNo(db, pharmacyId, d) {
@@ -103,6 +155,17 @@ export function createSale(db, { pharmacyId, user, body, createdAt = null }) {
   if (!PAYMENT_METHODS.includes(method)) throw bad(`payment_method must be one of ${PAYMENT_METHODS.join(', ')}`);
   if (body.discount && !['admin', 'owner', 'pharmacist'].includes(user.role)) throw forbidden('Only pharmacists and owners can give discounts');
 
+  // Offline sync is idempotent: the same client_id is only ever recorded once.
+  const clientId = body.client_id ? String(body.client_id).slice(0, 64) : null;
+  if (clientId) {
+    const existing = db.get('SELECT id, pharmacy_id FROM sales WHERE client_id = ?', clientId);
+    if (existing) {
+      if (existing.pharmacy_id !== pharmacyId) throw conflict('client_id already used');
+      return { ...getSale(db, existing.id), duplicate: true };
+    }
+  }
+  createdAt = createdAt || offlineTime(body);
+
   return db.tx(() => {
     const q = quoteSale(db, pharmacyId, body);
     if (method === 'program' && q.total !== 0) throw bad('Payment method "program" is only for fully subsidised sales');
@@ -115,11 +178,20 @@ export function createSale(db, { pharmacyId, user, body, createdAt = null }) {
     // Expiry is judged on the Uganda (EAT) calendar date, matching the stock summary.
     const eatDay = createdAt ? new Date(Date.parse(`${createdAt.replace(' ', 'T')}Z`) + 3 * 3600e3).toISOString().slice(0, 10) : today();
     const asOf = eatDay;
+    const rx = q.needs_prescription ? checkPrescription(body.prescription, asOf) : null;
+    let malariaTest = null;
+    if (q.malaria_tested_here) malariaTest = 'tested_here';
+    else if (q.needs_malaria_test) {
+      if (!MALARIA_TEST.includes(body.malaria_test)) {
+        throw bad('Antimalarial in basket: record whether the patient was tested for malaria', { code: 'MALARIA_TEST_REQUIRED' });
+      }
+      malariaTest = body.malaria_test;
+    }
     const allocations = [];
     for (const line of q.lines) {
       const batches = db.all(
         `SELECT id, quantity, cost_price FROM inventory_batches
-          WHERE pharmacy_id = ? AND product_id = ? AND quantity > 0 AND expiry_date >= ?
+          WHERE pharmacy_id = ? AND product_id = ? AND quantity > 0 AND expiry_date >= ? AND quarantined = 0
           ORDER BY expiry_date, id`,
         pharmacyId, line.product_id, asOf,
       );
@@ -139,13 +211,24 @@ export function createSale(db, { pharmacyId, user, body, createdAt = null }) {
     }
 
     const receipt_no = nextReceiptNo(db, pharmacyId, eatDay);
+    const shift = db.get("SELECT id FROM shifts WHERE pharmacy_id = ? AND user_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1", pharmacyId, user.id);
     const sale = db.run(
       `INSERT INTO sales (pharmacy_id, user_id, patient_id, program_id, receipt_no, subtotal, discount_total, subsidy_total, total,
-                          payment_method, payment_ref, amount_tendered, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?, COALESCE(?, datetime('now')))`,
+                          payment_method, payment_ref, amount_tendered, created_at, client_id, offline, shift_id, malaria_test)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?, COALESCE(?, datetime('now')),?,?,?,?)`,
       pharmacyId, user.id, q.patient_id, q.program?.id ?? null, receipt_no, q.subtotal, q.discount_total, q.subsidy_total, q.total,
       method, body.payment_ref ? String(body.payment_ref).slice(0, 64) : null, tendered, createdAt,
+      clientId, body.offline_created_at ? 1 : 0, shift?.id ?? null, malariaTest,
     );
+    if (rx) {
+      db.run(
+        `INSERT INTO prescriptions (pharmacy_id, sale_id, patient_id, patient_name, prescriber_name, prescriber_reg_no, prescriber_facility,
+                                    rx_date, diagnosis, created_by, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?, COALESCE(?, datetime('now')))`,
+        pharmacyId, sale.id, q.patient_id, rx.patient_name, rx.prescriber_name, rx.prescriber_reg_no, rx.prescriber_facility,
+        rx.rx_date, rx.diagnosis, user.id, createdAt,
+      );
+    }
 
     for (const { line, parts } of allocations) {
       // Spread the line subsidy across batch parts in proportion to quantity.
@@ -165,6 +248,10 @@ export function createSale(db, { pharmacyId, user, body, createdAt = null }) {
           pharmacyId, line.product_id, p.batch.id, -p.qty, receipt_no, user.id, createdAt,
         );
       });
+    }
+    if (q.pharmacy.efris_enabled) {
+      const f = fiscalise({ receipt_no, total: q.total, pharmacyId });
+      db.run('UPDATE sales SET efris_fdn = ?, efris_status = ? WHERE id = ?', f.fdn, f.status, sale.id);
     }
     return getSale(db, sale.id);
   });
@@ -190,7 +277,9 @@ export function getSale(db, id) {
       WHERE si.sale_id = ? ORDER BY si.id`,
     id,
   );
+  sale.prescription = db.get('SELECT * FROM prescriptions WHERE sale_id = ?', id) || null;
   sale.voided = !!sale.voided;
+  sale.payment_verified = !!sale.payment_verified;
   if (sale.amount_tendered != null) sale.change_due = Math.max(0, sale.amount_tendered - sale.total);
   return sale;
 }

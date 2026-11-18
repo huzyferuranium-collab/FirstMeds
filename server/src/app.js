@@ -16,6 +16,9 @@ import claimRoutes from './routes/claims.js';
 import reminderRoutes from './routes/reminders.js';
 import reportRoutes from './routes/reports.js';
 import adminRoutes from './routes/admin.js';
+import qualityRoutes from './routes/quality.js';
+import purchasingRoutes from './routes/purchasing.js';
+import cashRoutes from './routes/cash.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -50,6 +53,9 @@ export function createApp(db, { serveClient = true } = {}) {
   api.use('/reminders', authed, reminderRoutes(db));
   api.use('/reports', authed, reportRoutes(db));
   api.use('/admin', authed, adminRoutes(db));
+  api.use('/quality', authed, qualityRoutes(db));
+  api.use('/purchasing', authed, purchasingRoutes(db));
+  api.use('/cash', authed, cashRoutes(db));
   api.use((_req, _res, next) => next(new HttpError(404, 'Not found')));
 
   app.use('/api', api);

@@ -4,6 +4,9 @@ import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './auth.jsx';
 import App from './App.jsx';
 import './styles.css';
+import { registerServiceWorker } from './offline.js';
+
+registerServiceWorker();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

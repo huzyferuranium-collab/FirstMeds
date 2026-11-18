@@ -52,6 +52,46 @@ export const CATALOGUE = [
   ['Examination Gloves', 'Nitrile gloves', '1 pair', 'pair', 'Supplies', 'pair', 500, 0, 0, 0],
 ];
 
+// Dispensing advice shown at the counter.
+const COUNSELLING = {
+  'Artemether-Lumefantrine': 'Confirm malaria with a test first. Take with food or milk, twice a day for 3 days, and finish all 24 tablets.',
+  'Quinine': 'For confirmed malaria only. Can cause ringing in the ears; take with food. Finish the full 7-day course.',
+  'Amoxicillin': 'Antibiotic: finish the whole course even if feeling better. Ask about penicillin allergy before dispensing.',
+  'Amoxicillin Suspension': 'Antibiotic: shake well, keep in a cool place, finish the course. Check the child\'s weight for the dose.',
+  'Cotrimoxazole': 'Antibiotic: drink plenty of water. Ask about sulfa allergy and pregnancy.',
+  'Metronidazole': 'No alcohol during the course and for 48 hours after. Take after food.',
+  'Ciprofloxacin': 'Antibiotic: not for children or pregnant women. Do not take with milk or antacids.',
+  'Metformin': 'Take with meals. Check blood sugar regularly; return for refill before the tablets run out.',
+  'Amlodipine': 'Take once a day at the same time. Do not stop suddenly. Check blood pressure monthly.',
+  'Losartan': 'Not for pregnant women. Check blood pressure monthly.',
+  'Oral Rehydration Salts': 'Mix one sachet in 1 litre of clean water. Give small sips often; continue breastfeeding.',
+  'Zinc Sulphate Dispersible': 'Give for 10 days even after diarrhoea stops: half a tablet under 6 months, one tablet from 6 months.',
+  'ORS + Zinc Co-pack': 'Give ORS after every loose stool and zinc once a day for 10 days.',
+  'Emergency Contraceptive': 'Take as soon as possible, within 72 hours. Not for regular contraception.',
+  'DMPA Injection': 'Next injection due in 3 months (13 weeks). Record the return date on the client card.',
+  'Salbutamol Inhaler': 'Shake before use; show the patient how to use a spacer. Seek care if needed more than twice a week.',
+  'Ferrous + Folic Acid': 'One tablet a day throughout pregnancy. May darken stool; take with orange juice, not tea.',
+};
+const ANTIBIOTICS = ['Amoxicillin', 'Amoxicillin Suspension', 'Cotrimoxazole', 'Metronidazole', 'Ciprofloxacin'];
+
+const SUPPLIERS = [
+  // name, district, lead days, payment terms (days), price factor vs. reference cost, rating
+  ['Joint Medical Store', 'Kampala', 4, 30, 0.97, 4.6],
+  ['Kampala Pharma Wholesalers', 'Kampala', 1, 0, 1.06, 4.1],
+  ['Abacus Distributors', 'Wakiso', 2, 14, 1.0, 4.3],
+  ['Unity Medical Supplies', 'Mbarara', 3, 7, 0.94, 3.9],
+  ['Northern Pharma Traders', 'Gulu', 2, 0, 1.1, 3.6],
+];
+
+const PRESCRIBERS = [
+  ['Dr. Agnes Namutebi', 'UMDPC/DEMO/1041'], ['Dr. Patrick Okot', 'UMDPC/DEMO/2207'], ['Dr. Brenda Tumwine', 'UMDPC/DEMO/3318'],
+  ['Clin. Off. Isaac Wafula', 'AHPC/DEMO/0874'], ['Dr. Moses Kiggundu', 'UMDPC/DEMO/1765'], ['Clin. Off. Grace Atim', 'AHPC/DEMO/1123'],
+];
+const RX_FACILITY = {
+  Kampala: 'Kiruddu Hospital', Wakiso: 'Kireka HC III', Mukono: 'Mukono HC IV', Jinja: 'Jinja RRH', Gulu: 'Gulu RRH',
+  Mbarara: 'Mbarara RRH', Lira: 'Lira RRH', Mbale: 'Mbale RRH', Entebbe: 'Entebbe RRH', Masaka: 'Masaka RRH',
+};
+
 const PROGRAMS = [
   {
     code: 'MALARIA', name: 'Malaria Test & Treat', sponsor: 'Malaria partner fund (demo)', discount_percent: 50, max: 0, enroll: 0,
@@ -114,7 +154,7 @@ function rng(seed) {
 
 /** Seed catalogue + programs (always) and, when demo=true, facilities, staff, stock and sales history. */
 export function seed(db, { demo = true, days = 90, adminEmail = 'admin@firstmeds.ug', adminPassword = DEMO_PASSWORD, quiet = false } = {}) {
-  const log = quiet ? () => {} : console.log;
+  log = quiet ? () => {} : console.log;
   const rand = rng(256);
   const pick = (arr) => arr[Math.floor(rand() * arr.length)];
   const between = (a, b) => a + Math.floor(rand() * (b - a + 1));
@@ -129,7 +169,11 @@ export function seed(db, { demo = true, days = 90, adminEmail = 'admin@firstmeds
         name, generic, strength, form, category, unit, price, ess, rx, `NDA/DEMO/${String(Object.keys(products).length + 1).padStart(4, '0')}`,
       );
       products[name] = { id, price, days: days_, category, rx };
+      db.run('UPDATE products SET barcode = ?, counselling = ?, antibiotic = ? WHERE id = ?',
+        `2000${String(id).padStart(8, '0')}${(id * 7) % 10}`, COUNSELLING[name] || null, ANTIBIOTICS.includes(name) ? 1 : 0, id);
     }
+    // One product without an NDA registration number, to show the "unverified" warning.
+    db.run("UPDATE products SET nda_status = 'unverified', nda_reg_no = NULL WHERE name = 'Multivitamin Syrup'");
     const start = addDays(today(), -days - 30);
     for (const p of PROGRAMS) {
       const { id } = db.run(
@@ -223,6 +267,7 @@ export function seed(db, { demo = true, days = 90, adminEmail = 'admin@firstmeds
       );
     });
   });
+  db.run("UPDATE pharmacies SET efris_enabled = 1 WHERE type = 'pharmacy'");
   log(`  facilities: ${pharmacies.length} with staff and opening stock`);
 
   // Patients and enrollments
@@ -259,6 +304,7 @@ export function seed(db, { demo = true, days = 90, adminEmail = 'admin@firstmeds
   const baskets = [
     { w: 18, items: [['Malaria Rapid Diagnostic Test', 1], ['Artemether-Lumefantrine', 1], ['Paracetamol', 1]], program: 'MALARIA' },
     { w: 8, items: [['Malaria Rapid Diagnostic Test', 1], ['Paracetamol', 1]], program: 'MALARIA' },
+    { w: 5, items: [['Artemether-Lumefantrine', 1], ['Paracetamol', 1]], program: 'MALARIA', actOnly: true },
     { w: 16, items: [['Paracetamol', 2]] },
     { w: 7, items: [['Ibuprofen', 1], ['Magnesium Trisilicate', 1]] },
     { w: 9, items: [['Amoxicillin', 2], ['Paracetamol', 1]] },
@@ -315,6 +361,15 @@ export function seed(db, { demo = true, days = 90, adminEmail = 'admin@firstmeds
           const hourEat = between(7, 20);
           const createdAt = `${date} ${pad(hourEat - 3)}:${pad(between(0, 59))}:${pad(between(0, 59))}`; // stored in UTC
           const method = pickMethod();
+          const needsRx = items.some(([name]) => products[name].rx);
+          const district = PHARMACIES[ph.n - 1][2];
+          const [prescriber, regNo] = pick(PRESCRIBERS);
+          const prescription = needsRx ? {
+            prescriber_name: prescriber, prescriber_reg_no: regNo, prescriber_facility: RX_FACILITY[district],
+            rx_date: addDays(date, -(basket.chronic ? between(0, 25) : between(0, 2))),
+            diagnosis: basket.chronic ? 'Hypertension / diabetes follow-up' : null,
+          } : undefined;
+          const malaria_test = basket.actOnly ? (rand() < 0.7 ? 'tested_elsewhere' : 'not_tested') : undefined;
           try {
             const sale = createSale(db, {
               pharmacyId: ph.id,
@@ -325,6 +380,8 @@ export function seed(db, { demo = true, days = 90, adminEmail = 'admin@firstmeds
                 program_id: program?.id,
                 payment_method: method,
                 payment_ref: method.includes('_') ? `${method === 'mtn_momo' ? 'MP' : 'AM'}${between(10000000, 99999999)}` : null,
+                prescription,
+                malaria_test,
                 items: items.map(([name, qty]) => ({ product_id: products[name].id, quantity: qty, days_supply: basket.chronic || basket.mama ? 30 : 0 })),
               },
             });
@@ -338,6 +395,7 @@ export function seed(db, { demo = true, days = 90, adminEmail = 'admin@firstmeds
     });
   }
   log(`  sales: ${count} over ${days + 1} days`);
+  seedOperations(db, { pharmacies, products, rand, pick, between, days });
 
   // Claims for previous full month(s): one paid, one submitted.
   const months = db.all("SELECT DISTINCT strftime('%Y-%m', created_at, '+3 hours') AS m FROM sales ORDER BY m").map((r) => r.m);
@@ -364,6 +422,162 @@ export function seed(db, { demo = true, days = 90, adminEmail = 'admin@firstmeds
   });
   log(`  claims: ${past.length} month(s)`);
 }
+
+/** Suppliers, purchase orders, cash-up shifts, mobile money checks, quality alerts and offline sales. */
+function seedOperations(db, { pharmacies, products, rand, pick, between }) {
+  const t = today();
+  db.tx(() => {
+    // Suppliers and their price lists (cost to the pharmacy per selling unit).
+    const suppliers = SUPPLIERS.map(([name, district, lead, terms, factor, rating]) => {
+      const { id } = db.run(
+        'INSERT INTO suppliers (name, phone, district, nda_license, lead_time_days, payment_terms_days, rating) VALUES (?,?,?,?,?,?,?)',
+        name, `+25641${String(4000000 + Math.floor(rand() * 999999)).slice(0, 7)}`, district, `NDA/DEMO/WS/${200 + Math.floor(rand() * 700)}`, lead, terms, rating,
+      );
+      for (const p of Object.values(products)) {
+        if (rand() < 0.12) continue; // not every wholesaler carries everything
+        const price = Math.max(50, Math.round((p.price * 0.62 * factor * (0.92 + rand() * 0.16)) / 50) * 50);
+        db.run('INSERT INTO supplier_prices (supplier_id, product_id, price, in_stock) VALUES (?,?,?,?)', id, p.id, price, rand() < 0.93 ? 1 : 0);
+      }
+      return { id, name, terms };
+    });
+
+    // Purchase orders: two received (one fully paid, one with a balance), one sent and awaiting delivery.
+    for (const ph of pharmacies) {
+      const type = db.get('SELECT type FROM pharmacies WHERE id = ?', ph.id).type;
+      const pool = Object.entries(products).filter(([, p]) => !(type === 'drug_shop' && p.rx));
+      [[45, 'paid'], [12, 'balance'], [2, 'sent']].forEach(([ago, kind], k) => {
+        const sup = suppliers[(ph.n + k) % suppliers.length];
+        const d = addDays(t, -ago);
+        const poNo = `PO${ph.id}-${d.replaceAll('-', '').slice(2)}-00${k + 1}`;
+        const po = db.run(
+          "INSERT INTO purchase_orders (pharmacy_id, supplier_id, po_no, status, created_by, created_at, sent_at) VALUES (?,?,?,?,?, datetime(?, '+6 hours'), datetime(?, '+7 hours'))",
+          ph.id, sup.id, poNo, kind === 'sent' ? 'sent' : 'received', ph.staff[0], d, d,
+        );
+        let total = 0;
+        for (let i = 0; i < between(4, 7); i++) {
+          const [, p] = pick(pool);
+          if (db.get('SELECT 1 FROM po_items WHERE po_id = ? AND product_id = ?', po.id, p.id)) continue;
+          const offer = db.get('SELECT price FROM supplier_prices WHERE supplier_id = ? AND product_id = ?', sup.id, p.id);
+          const cost = offer?.price ?? Math.round(p.price * 0.65);
+          const qty = between(2, 10) * 10;
+          db.run('INSERT INTO po_items (po_id, product_id, quantity, unit_cost, received_qty) VALUES (?,?,?,?,?)', po.id, p.id, qty, cost, kind === 'sent' ? 0 : qty);
+          total += qty * cost;
+          if (kind !== 'sent') {
+            const b = db.run(
+              "INSERT INTO inventory_batches (pharmacy_id, product_id, batch_no, expiry_date, quantity, cost_price, supplier, po_id, received_at) VALUES (?,?,?,?,?,?,?,?, datetime(?, '+9 hours'))",
+              ph.id, p.id, `${poNo.slice(-3)}${p.id}${between(1000, 9999)}`, addDays(t, between(200, 700)), qty, cost, sup.name, po.id, addDays(d, 1),
+            );
+            db.run(
+              "INSERT INTO stock_movements (pharmacy_id, product_id, batch_id, type, quantity, reason, user_id, created_at) VALUES (?,?,?,'receive',?,?,?, datetime(?, '+9 hours'))",
+              ph.id, p.id, b.id, qty, `${poNo} from ${sup.name}`, ph.staff[1], addDays(d, 1),
+            );
+          }
+        }
+        if (kind === 'sent') {
+          db.run('UPDATE purchase_orders SET total = ? WHERE id = ?', total, po.id);
+          return;
+        }
+        const due = addDays(addDays(d, 1), sup.terms);
+        const paid = kind === 'paid' ? total : Math.round((total * (ph.n % 3 === 0 ? 0 : 0.4)) / 1000) * 1000;
+        db.run("UPDATE purchase_orders SET total = ?, paid = ?, received_at = datetime(?, '+9 hours'), due_date = ? WHERE id = ?", total, paid, addDays(d, 1), due, po.id);
+        if (paid) db.run("INSERT INTO supplier_payments (po_id, amount, method, user_id, created_at) VALUES (?,?,?,?, datetime(?, '+10 hours'))", po.id, paid, 'mtn_momo', ph.staff[0], addDays(d, 2));
+      });
+    }
+
+    // Closed till shifts for the last 30 days, built from each cashier's actual sales that day.
+    const rows = db.all(
+      `SELECT pharmacy_id, user_id, date(created_at, '+3 hours') AS day, MIN(created_at) AS first, MAX(created_at) AS last,
+              COUNT(*) AS n, SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END) AS cash,
+              SUM(CASE WHEN payment_method = 'mtn_momo' THEN total ELSE 0 END) AS momo,
+              SUM(CASE WHEN payment_method = 'airtel_money' THEN total ELSE 0 END) AS airtel
+         FROM sales WHERE voided = 0 AND date(created_at, '+3 hours') BETWEEN ? AND ?
+        GROUP BY pharmacy_id, user_id, day`,
+      addDays(t, -30), addDays(t, -1),
+    );
+    for (const r of rows) {
+      const float = 50000;
+      const expected = float + r.cash;
+      // Mostly exact, small rounding differences sometimes; one facility has a recurring shortage to show the alert.
+      let variance = rand() < 0.75 ? 0 : -Math.round(between(1, 10)) * 100;
+      if (r.pharmacy_id === pharmacies[6].id && rand() < 0.35) variance = -between(5, 25) * 1000;
+      const sh = db.run(
+        `INSERT INTO shifts (pharmacy_id, user_id, opening_float, opened_at, closed_at, expected_cash, counted_cash, variance, momo_total, airtel_total, sales_count, status, notes)
+         VALUES (?,?,?, datetime(?, '-20 minutes'), datetime(?, '+15 minutes'), ?,?,?,?,?,?, 'closed', ?)`,
+        r.pharmacy_id, r.user_id, float, r.first, r.last, expected, expected + variance, variance, r.momo, r.airtel, r.n,
+        variance < -4000 ? 'Shortage — owner to follow up' : null,
+      );
+      db.run(
+        "UPDATE sales SET shift_id = ? WHERE pharmacy_id = ? AND user_id = ? AND date(created_at, '+3 hours') = ?",
+        sh.id, r.pharmacy_id, r.user_id, r.day,
+      );
+    }
+    // Today's open shift for the facility-1 demo staff.
+    for (const uid of pharmacies[0].staff.slice(1)) {
+      db.run("INSERT INTO shifts (pharmacy_id, user_id, opening_float, opened_at) VALUES (?,?,50000, datetime('now', 'start of day', '+5 hours'))", pharmacies[0].id, uid);
+    }
+    const open = db.all("SELECT id, user_id FROM shifts WHERE status = 'open'");
+    for (const o of open) db.run("UPDATE sales SET shift_id = ? WHERE user_id = ? AND created_at >= datetime('now', 'start of day', '+5 hours')", o.id, o.user_id);
+
+    // Make a few fast sellers run low at each facility so reorder suggestions have something to show.
+    for (const ph of pharmacies) {
+      const fast = db.all(
+        `SELECT si.product_id, SUM(si.quantity) / 30.0 AS per_day FROM sale_items si JOIN sales s ON s.id = si.sale_id
+          WHERE s.pharmacy_id = ? AND s.voided = 0 AND s.created_at >= datetime('now','-30 days')
+          GROUP BY si.product_id ORDER BY per_day DESC LIMIT 12`, ph.id,
+      );
+      for (const f of fast.filter((_, i) => i % 3 === 1).slice(0, 4)) {
+        const keep = Math.max(1, Math.round(f.per_day * between(1, 4)));
+        const batches = db.all('SELECT id, quantity FROM inventory_batches WHERE pharmacy_id = ? AND product_id = ? AND quantity > 0 AND quarantined = 0 ORDER BY expiry_date', ph.id, f.product_id);
+        let left = keep;
+        for (const b of batches) {
+          const newQ = Math.min(b.quantity, left);
+          left -= newQ;
+          if (newQ !== b.quantity) {
+            db.run('UPDATE inventory_batches SET quantity = ? WHERE id = ?', newQ, b.id);
+            db.run("INSERT INTO stock_movements (pharmacy_id, product_id, batch_id, type, quantity, reason, user_id, created_at) VALUES (?,?,?,'adjust',?,?,?, datetime('now','-1 days'))",
+              ph.id, f.product_id, b.id, newQ - b.quantity, 'Stock count: damaged / returned to supplier', ph.staff[0]);
+          }
+        }
+      }
+    }
+
+    // Mobile money: older payments matched to the statement; the last 3 days still to reconcile; a few never arrived.
+    db.run(`UPDATE sales SET payment_verified = 1 WHERE payment_method IN ('mtn_momo','airtel_money')
+              AND created_at < datetime('now', '-3 days') AND (id % 37) != 0`);
+
+    // A power cut in the North: some sales at Gulu and Lira were made offline and synced later.
+    for (const ph of [pharmacies[4], pharmacies[6]]) {
+      db.run(`UPDATE sales SET offline = 1 WHERE pharmacy_id = ? AND date(created_at, '+3 hours') = ?`, ph.id, addDays(t, -9));
+    }
+
+    // Quality alert: a suspect batch of artemether-lumefantrine found in the North and quarantined network-wide.
+    const al = products['Artemether-Lumefantrine'];
+    const suspectBatch = 'AL2409-117X';
+    for (const ph of [pharmacies[4], pharmacies[6], pharmacies[1]]) {
+      db.run(
+        "INSERT INTO inventory_batches (pharmacy_id, product_id, batch_no, expiry_date, quantity, cost_price, supplier, quarantined, received_at) VALUES (?,?,?,?,?,?,?,1, datetime('now','-8 days'))",
+        ph.id, al.id, suspectBatch, addDays(t, 540), between(10, 40), 5200, 'Northern Pharma Traders',
+      );
+    }
+    db.run(
+      `INSERT INTO quality_reports (pharmacy_id, product_id, batch_no, supplier, issue_type, description, status, hq_note, created_by, created_at, updated_at)
+       VALUES (?,?,?,?,'suspected_fake',?, 'reported_to_nda', ?, ?, datetime('now','-6 days'), datetime('now','-4 days'))`,
+      pharmacies[4].id, al.id, suspectBatch, 'Northern Pharma Traders',
+      'Blister foil printing is blurred, tablets are a lighter yellow than usual and the price was far below normal. Two patients said the treatment did not work.',
+      'Samples sent to NDA Quality Control Lab. Batch quarantined at all FirstMeds facilities that received it.', pharmacies[4].staff[1],
+    );
+    const amox = products['Amoxicillin Suspension'];
+    db.run(
+      `INSERT INTO quality_reports (pharmacy_id, product_id, batch_no, supplier, issue_type, description, status, hq_note, created_by, created_at, updated_at)
+       VALUES (?,?,?,?,'poor_quality',?, 'cleared', ?, ?, datetime('now','-40 days'), datetime('now','-33 days'))`,
+      pharmacies[2].id, amox.id, 'AMX-5512', 'Abacus Distributors', 'Powder had clumped in two bottles.',
+      'Supplier confirmed storage problem in one carton only; replaced. Batch cleared.', pharmacies[2].staff[1],
+    );
+  });
+  log(`  operations: ${SUPPLIERS.length} suppliers, purchase orders, till shifts, quality alerts`);
+}
+
+let log = console.log;
 
 // CLI: node src/seed.js [--reset]
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

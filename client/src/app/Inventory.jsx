@@ -48,7 +48,7 @@ function ProductPanel({ item, onClose, onChanged }) {
                 <tbody>
                   {batches.data.map((b) => (
                     <tr key={b.id} style={b.quantity === 0 ? { opacity: 0.5 } : undefined}>
-                      <td className="mono">{b.batch_no}</td>
+                      <td className="mono">{b.batch_no} {b.quarantined ? <Badge tone="red">quarantined</Badge> : null}</td>
                       <td><ExpiryBadge d={b.expiry_date} /></td>
                       <td className="num">{num(b.quantity)}</td>
                       <td className="num">{num(b.cost_price)}</td>
@@ -85,6 +85,8 @@ function ProductPanel({ item, onClose, onChanged }) {
             <div className="form-actions"><button type="button" className="btn secondary" onClick={() => setAdjust(null)}>Cancel</button><button className="btn" disabled={adj.busy}>Save adjustment</button></div>
           </form>
         )}
+
+        <p className="small muted" style={{ margin: 0 }}>Something wrong with a batch (odd packaging, colour, patient complaints)? <Link to="/app/quality">Report it in Medicine safety</Link> — it will be quarantined.</p>
 
         <div>
           <h3>Recent movements</h3>
@@ -188,6 +190,7 @@ export default function Inventory() {
                             <td className="num">
                               {s.in_stock === 0 ? <Badge tone="red">0</Badge> : s.in_stock <= s.reorder_level ? <Badge tone="amber">{num(s.in_stock)}</Badge> : num(s.in_stock)}
                               {s.expired_qty > 0 && <div className="small" style={{ color: 'var(--danger)' }}>+{s.expired_qty} expired</div>}
+                              {s.quarantined_qty > 0 && <div className="small" style={{ color: 'var(--danger)' }}>{s.quarantined_qty} quarantined</div>}
                             </td>
                             <td className="num">{s.reorder_level}</td>
                             <td><ExpiryBadge d={s.next_expiry} /></td>

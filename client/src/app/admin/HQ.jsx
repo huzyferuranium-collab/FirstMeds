@@ -173,6 +173,14 @@ function ProductForm({ product, onSaved }) {
         <Field label="Sold per"><input value={f.values.unit} onChange={f.set('unit')} placeholder="strip, bottle…" /></Field>
         <Field label="NDA registration no."><input value={f.values.nda_reg_no || ''} onChange={f.set('nda_reg_no')} /></Field>
         <Field label="Recommended price (UGX) *"><input required type="number" min="0" value={f.values.default_price} onChange={f.set('default_price')} /></Field>
+        <Field label="Barcode (GTIN)"><input value={f.values.barcode || ''} onChange={f.set('barcode')} inputMode="numeric" /></Field>
+        <Field label="NDA status">
+          <select value={f.values.nda_status || 'registered'} onChange={f.set('nda_status')}>
+            <option value="registered">Registered</option><option value="unverified">Not verified</option><option value="suspended">Suspended (quality alert)</option>
+          </select>
+        </Field>
+        <Field label="Dispensing advice shown at the counter" className="full"><textarea rows={2} value={f.values.counselling || ''} onChange={f.set('counselling')} /></Field>
+        <label className="field inline"><input type="checkbox" checked={!!f.values.antibiotic} onChange={f.set('antibiotic')} /> Antibiotic</label>
         <label className="field inline"><input type="checkbox" checked={f.values.is_essential} onChange={f.set('is_essential')} /> Essential medicine</label>
         <label className="field inline"><input type="checkbox" checked={f.values.requires_prescription} onChange={f.set('requires_prescription')} /> Prescription only</label>
         {product?.id && <label className="field inline"><input type="checkbox" checked={f.values.active} onChange={f.set('active')} /> Active</label>}
@@ -197,7 +205,7 @@ export function Catalogue() {
             <tr key={p.id} className="clickable" onClick={() => setEdit(p)} style={!p.active ? { opacity: 0.5 } : undefined}>
               <td><strong>{p.name}</strong> <span className="small muted">{p.strength}</span></td><td className="small">{p.generic_name}</td><td>{p.category}</td>
               <td className="small mono">{p.nda_reg_no}</td><td className="num">{ugx(p.default_price)}</td>
-              <td>{p.is_essential ? <Badge tone="green">EML</Badge> : null} {p.requires_prescription ? <Badge tone="blue">Rx</Badge> : null} {!p.active && <Badge>inactive</Badge>}</td>
+              <td>{p.is_essential ? <Badge tone="green">EML</Badge> : null} {p.requires_prescription ? <Badge tone="blue">Rx</Badge> : null} {p.antibiotic ? <Badge tone="amber">Antibiotic</Badge> : null} {p.nda_status !== 'registered' && <Badge tone="red">{p.nda_status}</Badge>} {!p.active && <Badge>inactive</Badge>}</td>
             </tr>
           ))}</tbody>
         </table></div></div>
@@ -283,6 +291,52 @@ export function Website() {
       )}</Loader>}
       {edit && tab === 'news' && <Modal wide title={edit.id ? 'Edit article' : 'New article'} onClose={() => setEdit(null)}><PostForm post={edit.id ? edit : null} onSaved={close} onDelete={async () => { await api.del(`/admin/news/${edit.id}`); close(); }} /></Modal>}
       {edit && tab === 'jobs' && <Modal wide title={edit.id ? 'Edit job' : 'New job'} onClose={() => setEdit(null)}><JobForm job={edit.id ? edit : null} onSaved={close} onDelete={async () => { await api.del(`/admin/jobs/${edit.id}`); close(); }} /></Modal>}
+    </div>
+  );
+}
+
+
+/* ---------------- Suppliers ---------------- */
+function SupplierForm({ supplier, onSaved }) {
+  const districts = useApi('/public/districts');
+  const f = useForm({ name: '', phone: '', email: '', district: '', nda_license: '', lead_time_days: 3, payment_terms_days: 0, active: true, ...supplier, active: supplier ? !!supplier.active : true });
+  return (
+    <form className="stack" onSubmit={f.submit(async (v) => { const body = { ...v, lead_time_days: Number(v.lead_time_days), payment_terms_days: Number(v.payment_terms_days) }; await (supplier?.id ? api.put(`/purchasing/suppliers/${supplier.id}`, body) : api.post('/purchasing/suppliers', body)); onSaved(); })}>
+      <ErrorBox error={f.error} />
+      <div className="form-grid">
+        <Field label="Name *" className="full"><input required value={f.values.name} onChange={f.set('name')} /></Field>
+        <Field label="Phone"><input value={f.values.phone || ''} onChange={f.set('phone')} /></Field>
+        <Field label="Email"><input type="email" value={f.values.email || ''} onChange={f.set('email')} /></Field>
+        <Field label="District"><select value={f.values.district || ''} onChange={f.set('district')}><option value="">—</option>{districts.data?.map((d) => <option key={d}>{d}</option>)}</select></Field>
+        <Field label="NDA wholesale licence"><input value={f.values.nda_license || ''} onChange={f.set('nda_license')} /></Field>
+        <Field label="Delivery time (days)"><input type="number" min="0" value={f.values.lead_time_days} onChange={f.set('lead_time_days')} /></Field>
+        <Field label="Credit terms (days, 0 = cash)"><input type="number" min="0" value={f.values.payment_terms_days} onChange={f.set('payment_terms_days')} /></Field>
+        {supplier?.id && <label className="field inline"><input type="checkbox" checked={f.values.active} onChange={f.set('active')} /> Active</label>}
+      </div>
+      <div className="form-actions"><button className="btn" disabled={f.busy}>Save</button></div>
+    </form>
+  );
+}
+
+export function Suppliers() {
+  const state = useApi('/purchasing/suppliers');
+  const [edit, setEdit] = useState(null);
+  return (
+    <div className="page">
+      <PageTitle title="Suppliers" subtitle="NDA-licensed wholesalers available to FirstMeds facilities, with their price lists and terms."><button className="btn" onClick={() => setEdit({})}>+ Add supplier</button></PageTitle>
+      <Loader state={state}>{(rows) => (
+        <div className="card flush"><div className="table-wrap"><table className="table">
+          <thead><tr><th>Supplier</th><th>District</th><th>NDA licence</th><th className="num">Delivery</th><th className="num">Credit</th><th className="num">Prices on file</th><th className="num">Rating</th></tr></thead>
+          <tbody>{rows.map((s) => (
+            <tr key={s.id} className="clickable" onClick={() => setEdit(s)} style={!s.active ? { opacity: 0.5 } : undefined}>
+              <td><strong>{s.name}</strong><div className="small muted">{phone(s.phone)}</div></td><td>{s.district}</td><td className="small mono">{s.nda_license}</td>
+              <td className="num">{s.lead_time_days}d</td><td className="num">{s.payment_terms_days ? `${s.payment_terms_days}d` : 'cash'}</td>
+              <td className="num">{s.products_priced}</td><td className="num">{s.rating ? `★ ${s.rating.toFixed(1)}` : '—'}</td>
+            </tr>
+          ))}</tbody>
+        </table></div></div>
+      )}</Loader>
+      {edit && <Modal title={edit.id ? `Edit ${edit.name}` : 'Add supplier'} onClose={() => setEdit(null)}><SupplierForm supplier={edit.id ? edit : null} onSaved={() => { setEdit(null); state.reload(); }} /></Modal>}
     </div>
   );
 }

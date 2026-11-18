@@ -40,7 +40,7 @@ export default function Sales() {
                   <tbody>
                     {rows.map((r) => (
                       <tr key={r.id} className="clickable" onClick={() => nav(`/app/sales/${r.id}`)} style={r.voided ? { opacity: 0.5 } : undefined}>
-                        <td className="mono nowrap">{r.receipt_no} {r.voided ? <Badge tone="red">Voided</Badge> : null}</td>
+                        <td className="mono nowrap">{r.receipt_no} {r.voided ? <Badge tone="red">Voided</Badge> : null}{r.offline ? <Badge tone="blue">offline</Badge> : null}</td>
                         <td className="nowrap">{dateTime(r.created_at)}</td>
                         <td>{r.patient_name || <span className="muted">Walk-in</span>}</td>
                         <td className="num">{r.units}</td>
@@ -89,6 +89,18 @@ export function Receipt({ sale }) {
       <div className="l"><span>Paid by</span><span>{PAYMENT_LABELS[sale.payment_method]}</span></div>
       {sale.payment_ref && <div className="l"><span>Txn ID</span><span>{sale.payment_ref}</span></div>}
       {sale.amount_tendered != null && <><div className="l"><span>Cash</span><span>{num(sale.amount_tendered)}</span></div><div className="l"><span>Change</span><span>{num(sale.change_due)}</span></div></>}
+      {sale.prescription && <>
+        <hr />
+        <div>Rx: {sale.prescription.prescriber_name}{sale.prescription.prescriber_reg_no ? ` (${sale.prescription.prescriber_reg_no})` : ''}</div>
+        <div className="small">{[sale.prescription.prescriber_facility, `dated ${date(sale.prescription.rx_date)}`].filter(Boolean).join(' · ')}</div>
+      </>}
+      {sale.malaria_test && <div className="small">Malaria test: {{ tested_here: 'RDT done here', tested_elsewhere: 'tested elsewhere', not_tested: 'not tested' }[sale.malaria_test]}</div>}
+      {sale.efris_fdn && <>
+        <hr />
+        <div className="l"><span>EFRIS FDN</span><span>{sale.efris_fdn}</span></div>
+        {sale.efris_status === 'demo' && <div className="c small">(demo — not a real URA fiscal document)</div>}
+      </>}
+      {sale.offline ? <div className="c small">Recorded offline, synced later</div> : null}
       <hr />
       {sale.voided && <div className="c" style={{ fontWeight: 700 }}>*** VOIDED: {sale.void_reason} ***</div>}
       <div className="c">Thank you. Get well soon!</div>

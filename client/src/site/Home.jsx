@@ -52,7 +52,7 @@ export default function Home() {
             </p>
             <div className="row" style={{ marginTop: 28, gap: 12 }}>
               <Link to="/join" className="btn accent lg">Join the network</Link>
-              <Link to="/point-of-sale" className="btn secondary lg">See how it works</Link>
+              <Link to="/why-firstmeds" className="btn secondary lg">10 problems we solve</Link>
             </div>
           </div>
           <PhoneMock />
@@ -95,6 +95,24 @@ export default function Home() {
             <div><h3>Get set up</h3><p className="muted">Our field team loads your stock, trains your staff and gets you live in a day.</p></div>
             <div><h3>Serve more patients</h3><p className="muted">Offer programme discounts, send refill reminders and grow with the network.</p></div>
           </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="container">
+          <div className="section-head">
+            <div className="kicker">Built for real problems</div>
+            <h2>Everything that holds a pharmacy back, solved in one app</h2>
+          </div>
+          <div className="grid cols-4">
+            {[['🛡️', 'Fake medicines', 'Verify, report and quarantine suspect batches network-wide'], ['📦', 'Stock-outs', 'Smart reorder suggestions from real sales'],
+              ['⏳', 'Expiry losses', 'First-expiry-first-out and early warnings'], ['📴', 'No internet', 'Keep selling offline, sync later'],
+              ['🔐', 'Cash leakage', 'Till cash-up and mobile money matching'], ['⚖️', 'Compliance', 'Prescription register and drug-shop rules'],
+              ['🚚', 'Supplier prices', 'Compare wholesalers, order by WhatsApp'], ['💚', 'Affordability', 'Subsidies applied at checkout']].map(([i, t, d]) => (
+              <div key={t} className="feature"><div className="ico">{i}</div><h3>{t}</h3><p>{d}</p></div>
+            ))}
+          </div>
+          <p style={{ marginTop: 24 }}><Link to="/why-firstmeds" className="btn">See all 10 problems and how we solve them →</Link></p>
         </div>
       </section>
 

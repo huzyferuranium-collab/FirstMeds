@@ -238,3 +238,129 @@ CREATE TABLE IF NOT EXISTS jobs (
   published     INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ===================== v2: whole-pharmacy toolkit =====================
+
+-- Prescription register (required for prescription-only medicines).
+CREATE TABLE IF NOT EXISTS prescriptions (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  pharmacy_id     INTEGER NOT NULL REFERENCES pharmacies(id),
+  sale_id         INTEGER REFERENCES sales(id),
+  patient_id      INTEGER REFERENCES patients(id),
+  patient_name    TEXT,
+  prescriber_name TEXT NOT NULL,
+  prescriber_reg_no TEXT,          -- UMDPC / AHPC registration number
+  prescriber_facility TEXT,
+  rx_date         TEXT NOT NULL,   -- YYYY-MM-DD
+  diagnosis       TEXT,
+  created_by      INTEGER REFERENCES users(id),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_rx_pharmacy ON prescriptions(pharmacy_id, created_at);
+
+-- Suspected falsified / substandard medicine reports (pharmacovigilance).
+CREATE TABLE IF NOT EXISTS quality_reports (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  pharmacy_id     INTEGER NOT NULL REFERENCES pharmacies(id),
+  product_id      INTEGER NOT NULL REFERENCES products(id),
+  batch_id        INTEGER REFERENCES inventory_batches(id),
+  batch_no        TEXT NOT NULL,
+  supplier        TEXT,
+  issue_type      TEXT NOT NULL CHECK (issue_type IN ('suspected_fake','poor_quality','packaging','adverse_reaction','unregistered')),
+  description     TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','investigating','reported_to_nda','cleared','confirmed')),
+  hq_note         TEXT,
+  created_by      INTEGER REFERENCES users(id),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT
+);
+
+-- Suppliers / wholesalers and their price lists.
+CREATE TABLE IF NOT EXISTS suppliers (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  name            TEXT NOT NULL UNIQUE,
+  phone           TEXT,
+  email           TEXT,
+  district        TEXT,
+  nda_license     TEXT,
+  lead_time_days  INTEGER NOT NULL DEFAULT 3,
+  payment_terms_days INTEGER NOT NULL DEFAULT 0,  -- 0 = cash on delivery
+  rating          REAL,                           -- 1-5, from pharmacies
+  active          INTEGER NOT NULL DEFAULT 1,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS supplier_prices (
+  supplier_id     INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+  product_id      INTEGER NOT NULL REFERENCES products(id),
+  price           INTEGER NOT NULL,     -- UGX per selling unit
+  in_stock        INTEGER NOT NULL DEFAULT 1,
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (supplier_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  pharmacy_id     INTEGER NOT NULL REFERENCES pharmacies(id),
+  supplier_id     INTEGER NOT NULL REFERENCES suppliers(id),
+  po_no           TEXT NOT NULL UNIQUE,
+  status          TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','sent','received','cancelled')),
+  total           INTEGER NOT NULL DEFAULT 0,
+  paid            INTEGER NOT NULL DEFAULT 0,
+  due_date        TEXT,
+  notes           TEXT,
+  created_by      INTEGER REFERENCES users(id),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  sent_at         TEXT,
+  received_at     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS po_items (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_id           INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  product_id      INTEGER NOT NULL REFERENCES products(id),
+  quantity        INTEGER NOT NULL CHECK (quantity > 0),
+  unit_cost       INTEGER NOT NULL,
+  received_qty    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS supplier_payments (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_id           INTEGER NOT NULL REFERENCES purchase_orders(id),
+  amount          INTEGER NOT NULL CHECK (amount > 0),
+  method          TEXT NOT NULL DEFAULT 'cash',
+  reference       TEXT,
+  user_id         INTEGER REFERENCES users(id),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Till shifts and end-of-day cash-up.
+CREATE TABLE IF NOT EXISTS shifts (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  pharmacy_id     INTEGER NOT NULL REFERENCES pharmacies(id),
+  user_id         INTEGER NOT NULL REFERENCES users(id),
+  opening_float   INTEGER NOT NULL DEFAULT 0,
+  opened_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  closed_at       TEXT,
+  expected_cash   INTEGER,
+  counted_cash    INTEGER,
+  variance        INTEGER,
+  momo_total      INTEGER,
+  airtel_total    INTEGER,
+  sales_count     INTEGER,
+  notes           TEXT,
+  status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed'))
+);
+
+-- Mobile money statement lines imported for reconciliation.
+CREATE TABLE IF NOT EXISTS momo_statement_lines (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  pharmacy_id     INTEGER NOT NULL REFERENCES pharmacies(id),
+  provider        TEXT NOT NULL CHECK (provider IN ('mtn_momo','airtel_money')),
+  reference       TEXT NOT NULL,
+  amount          INTEGER NOT NULL,
+  txn_time        TEXT,
+  matched_sale_id INTEGER REFERENCES sales(id),
+  imported_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (pharmacy_id, provider, reference)
+);
