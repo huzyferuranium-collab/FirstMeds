@@ -4,6 +4,7 @@ import { useAuth } from '../auth.jsx';
 import { useApi, Spinner } from '../components/UI.jsx';
 import Logo from '../components/Logo.jsx';
 import { ROLE_LABELS } from '../format.js';
+import { useOffline } from '../offline.js';
 
 function PharmacyPicker() {
   const { activePharmacy, setPharmacyId } = useAuth();
@@ -31,6 +32,7 @@ export default function AppLayout() {
   const nav = useNavigate();
   useEffect(() => setOpen(false), [pathname]);
   const reminders = useApi(user && activePharmacy ? '/reminders' : null, [activePharmacy]);
+  const { online, pending, failed } = useOffline();
 
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/app/login" replace state={{ from: pathname }} />;
@@ -42,17 +44,27 @@ export default function AppLayout() {
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <Logo to="/app" light />
         {isAdmin && <PharmacyPicker />}
+        {(!online || pending > 0 || failed > 0) && (
+          <NavLink to="/app/cash" style={{ background: online ? 'rgba(37,99,168,0.25)' : 'rgba(245,180,0,0.2)' }}>
+            {online ? '🔄' : '📴'} {online ? 'Syncing' : 'Offline'} {pending + failed > 0 && <span className="count">{pending + failed}</span>}
+          </NavLink>
+        )}
         <NavLink to="/app" end>🏠 Dashboard</NavLink>
+        {facility && <NavLink to="/app/health">🩺 Health check</NavLink>}
         {facility && <>
           <div className="nav-label">Counter</div>
           <NavLink to="/app/pos">🧾 New sale</NavLink>
           <NavLink to="/app/sales">📜 Sales</NavLink>
+          <NavLink to="/app/cash">💰 Cash & payments</NavLink>
           <NavLink to="/app/patients">👥 Patients</NavLink>
           <NavLink to="/app/reminders">🔔 Refill reminders {reminders.data?.length ? <span className="count">{reminders.data.length}</span> : null}</NavLink>
+          {can('admin', 'owner', 'pharmacist') && <NavLink to="/app/prescriptions">📋 Prescriptions</NavLink>}
           <div className="nav-label">Stock</div>
           <NavLink to="/app/inventory">📦 Inventory</NavLink>
+          {can('admin', 'owner', 'pharmacist') && <NavLink to="/app/purchasing">🛒 Purchasing</NavLink>}
           {can('admin', 'owner', 'pharmacist') && <NavLink to="/app/receive">📥 Receive stock</NavLink>}
         </>}
+        <NavLink to="/app/quality">🛡️ Medicine safety</NavLink>
         <div className="nav-label">Programmes</div>
         <NavLink to="/app/programmes">💚 Programmes</NavLink>
         {(can('admin', 'owner')) && <NavLink to="/app/claims">💵 Subsidy claims</NavLink>}
@@ -63,6 +75,7 @@ export default function AppLayout() {
           <NavLink to="/app/hq/pharmacies">🏥 Facilities</NavLink>
           <NavLink to="/app/hq/applications">📝 Applications</NavLink>
           <NavLink to="/app/hq/catalogue">💊 Catalogue</NavLink>
+          <NavLink to="/app/hq/suppliers">🚚 Suppliers</NavLink>
           <NavLink to="/app/hq/website">🌐 Website</NavLink>
         </>}
         <div className="nav-label">Account</div>

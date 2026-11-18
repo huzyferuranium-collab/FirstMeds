@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import Logo from '../components/Logo.jsx';
 
 const NAV = [
+  ['/why-firstmeds', 'Why FirstMeds'],
   ['/point-of-sale', 'Point of Sale'],
   ['/programmes', 'Patient Programmes'],
   ['/data', 'Data Insights'],
@@ -48,6 +49,7 @@ export default function SiteLayout() {
             </div>
             <div>
               <h4>Solutions</h4>
+              <Link to="/why-firstmeds">Why FirstMeds</Link>
               <Link to="/point-of-sale">Point of Sale</Link>
               <Link to="/programmes">Patient Programmes</Link>
               <Link to="/data">Data Insights</Link>

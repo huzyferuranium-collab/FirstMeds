@@ -37,6 +37,21 @@ npm run build     # production build of the web client
 npm start         # serve API + built client on :4000
 ```
 
+## Presenting FirstMeds to pharmacies (demo script, ~10 minutes)
+
+Open the site, then go to `/app/login` and use the demo accounts (password `demo1234`).
+
+1. **Website → "Why FirstMeds"** (`/why-firstmeds`): the 10 problems pharmacies face and how each is solved. Start here.
+2. **Sign in as `owner1@demo.firstmeds.ug` → Health check**: one score across 11 areas, with what to fix next. Each card opens the screen that fixes it.
+3. **New sale**: add *Amoxicillin* and *Artemether-Lumefantrine*. Show the dispensing advice, the malaria-test question and the prescription details the app requires. Pay with MTN MoMo and show the receipt (prescriber, EFRIS number, batch and expiry).
+4. **Offline**: switch the phone to airplane mode and make a sale. It is saved on the device, then syncs when you reconnect (*Cash & payments → Offline sales*).
+5. **Cash & payments**: the till cash-up, the shift history with shortages, and the *Mobile money check* ("Fill with demo statement" → *Match payments*).
+6. **Purchasing**: reorder suggestions → *Create purchase orders* → open one (WhatsApp it to the supplier, receive with batch and expiry). Then show *Compare prices* and *Supplier balances*.
+7. **Medicine safety**: verify *Artemether* batch `AL2409-117X`. It is flagged as suspected fake and quarantined at 3 facilities. Show *Report a problem*.
+8. **Prescriptions**: the register to show an NDA inspector, and the "test before treat" rate.
+9. **Sign in as `owner2@demo.firstmeds.ug`** (a drug shop): search *Amoxicillin*. It is not available, because drug shops can't sell prescription-only medicines.
+10. **Sign in as `admin@firstmeds.ug`**: the network overview, quality alerts across all facilities, suppliers and claims.
+
 ## Features
 
 **At the counter**
@@ -63,6 +78,34 @@ npm start         # serve API + built client on :4000
 **Reports**
 - Facility dashboard: revenue, margin, average basket, subsidies, daily chart, top medicines, payment mix and busiest hours. Sales lines export to CSV.
 - HQ network view: revenue by district, a league table of facilities, programme reach, and stock-outs of essential medicines.
+
+**Medicine safety (fake and substandard medicines)**
+- Verify a medicine by barcode or name plus batch number. The app checks its registration status and any open quality alerts.
+- Report a suspect batch. Suspected fakes and unregistered products are quarantined at every facility that holds that batch, and new deliveries of a flagged batch are quarantined on arrival. Quarantined stock cannot be sold.
+- HQ tracks each report: investigating → reported to NDA → confirmed or cleared. Clearing a report releases the stock.
+
+**Rules and safe dispensing**
+- Drug shops can't stock, order or sell prescription-only medicines.
+- Prescription-only sales need the prescriber, registration number and a prescription dated within the last 30 days. These are kept in a printable prescription register.
+- Antimalarial sales record whether the patient was tested ("test before treat" rate), and dispensing advice is shown at the counter.
+
+**Purchasing and suppliers**
+- Price lists from licensed wholesalers, with side-by-side comparison.
+- Reorder suggestions based on sales speed, supplier delivery time and 14 days of cover.
+- Purchase orders (sent by WhatsApp) and receiving batch by batch, which refuses expired stock and quarantines flagged batches.
+- Supplier credit terms, payments, balances and overdue amounts.
+
+**Cash control**
+- Each cashier opens and closes their own till. Expected and counted cash give a variance, and the owner sees every shift.
+- Mobile money check: paste the MTN or Airtel statement, and payments are matched by transaction ID and amount. Unmatched or mismatched payments are flagged.
+
+**Offline**
+- The app installs on phones and works without internet. Stock, programmes and patients are cached on the device.
+- Sales made offline are queued on the device and sync automatically. Each sale has its own ID, so it is never recorded twice. Sales the server refuses (for example, if stock ran out meanwhile) are kept for review.
+
+**Health check**: one score across 11 areas: fake medicines, stock-outs, expiry, affordability, cash flow, compliance, dispensing, theft, offline readiness, supplier prices and patient retention.
+
+**Tax receipts**: receipts are ready for URA EFRIS. In demo mode they carry a placeholder fiscal document number clearly marked "demo".
 
 **HQ admin**
 - Facilities (add, edit, suspend) and staff accounts with temporary passwords.
@@ -123,7 +166,10 @@ docker run -p 4000:4000 -v firstmeds-data:/data \
 - **Programme sponsors** are labelled "(demo)". Replace them with real partners and set real prices and eligibility.
 - **NDA registration numbers** in the catalogue are placeholders (`NDA/DEMO/…`). Load the real ones from the National Drug Authority register.
 - **Mobile money** references are typed in by staff. To confirm payments automatically, integrate the MTN MoMo Collections and Airtel Money APIs.
-- **URA EFRIS** e-receipting is not connected yet. You may need it, depending on your tax obligations.
+- **URA EFRIS**: receipts currently show a placeholder `DEMO…` fiscal document number. Live fiscalisation needs URA EFRIS system-to-system credentials (`EFRIS_API_URL`, `EFRIS_DEVICE_NO` and a signing key). The code hook is in `server/src/services/efris.js`.
+- **Medicine verification** checks the FirstMeds catalogue and network alerts. It does not query NDA directly. Load real NDA registration numbers and product barcodes (GTINs) before relying on it. Demo barcodes start with `2000…`.
+- **Mobile money matching** works from a pasted statement. To verify payments automatically, connect the MTN MoMo and Airtel Money collection APIs.
+- **Supplier price lists** in the demo are invented. Collect real price lists from wholesalers.
 - **Data protection**: register with the Personal Data Protection Office and review consent wording under Uganda's Data Protection and Privacy Act, 2019, before storing real patient data.
 
 ## License

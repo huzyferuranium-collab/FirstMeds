@@ -40,6 +40,23 @@ export function Charts({ m }) {
   );
 }
 
+function HealthBanner() {
+  const { activePharmacy } = useAuth();
+  const h = useApi('/reports/health', [activePharmacy]);
+  if (!h.data) return null;
+  const act = h.data.checks.filter((c) => c.status === 'act');
+  const color = h.data.score >= 80 ? 'var(--brand)' : h.data.score >= 60 ? 'var(--warn)' : 'var(--danger)';
+  return (
+    <Link to="/app/health" className="card row between" style={{ marginBottom: 16, color: 'inherit', textDecoration: 'none', borderLeft: `5px solid ${color}` }}>
+      <div>
+        <strong>Pharmacy health score: <span style={{ color }}>{h.data.score}/100</span></strong>
+        <div className="small muted">{act.length ? `Act now: ${act.map((c) => c.title).join(', ')}` : 'No urgent problems. Open the health check for details.'}</div>
+      </div>
+      <span className="btn sm secondary">Open health check →</span>
+    </Link>
+  );
+}
+
 export default function Dashboard() {
   const { user, activePharmacy } = useAuth();
   const [days, setDays] = useState(30);
@@ -53,6 +70,7 @@ export default function Dashboard() {
         <RangePicker days={days} setDays={setDays} />
         {activePharmacy && <Link to="/app/pos" className="btn">+ New sale</Link>}
       </PageTitle>
+      {activePharmacy && <HealthBanner />}
       <Loader state={state}>{(m) => (
         <div className="stack">
           <div className="grid cols-4">

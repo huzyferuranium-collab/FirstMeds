@@ -29,7 +29,7 @@ export default function salesRoutes(db) {
     const limit = Math.min(Number(req.query.limit) || 100, 1000);
     res.json(db.all(
       `SELECT s.id, s.receipt_no, s.created_at, s.total, s.subtotal, s.subsidy_total, s.discount_total, s.payment_method,
-              s.payment_ref, s.voided, s.pharmacy_id, ph.name AS pharmacy_name, u.name AS cashier_name,
+              s.payment_ref, s.voided, s.offline, s.payment_verified, s.pharmacy_id, ph.name AS pharmacy_name, u.name AS cashier_name,
               pt.name AS patient_name, pr.name AS program_name,
               (SELECT SUM(quantity) FROM sale_items WHERE sale_id = s.id) AS units
          FROM sales s JOIN pharmacies ph ON ph.id = s.pharmacy_id
